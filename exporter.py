@@ -107,7 +107,7 @@ if __name__ == "__main__":
         exit(255)
 
     password = os.getenv("GB_PASSWORD")
-    if user is None:
+    if password is None:
         print("No password found, please set environment variable like this:")
         print("GB_PASSWORD=1234")
         exit(255)
