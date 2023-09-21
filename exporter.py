@@ -12,7 +12,7 @@ class GruenbeckCollector(object):
         self.__gbApi: GruenbeckApi = GruenbeckApi(user, password)
         self.__gbApi.init()
     def collect(self):          
-        self.__gbApi.refreshValues()
+        self.__gbApi.updateInfos()
 
         next_regeneration = GaugeMetricFamily("next_regeneration", "Timestamp for next regeneration")
         try:

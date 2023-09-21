@@ -57,7 +57,7 @@ class GruenbeckApi(object):
             print("Using device with ID: " + devices[0]["id"] + " and name: " + devices[0]["name"])
             return True
         return False
-    def __parseMgInfos(self):
+    def updateInfos(self):
         endpoint = ""; #Possible endpoints: parameters, measurements/salt, measurements/water
         headers = {
             "Host": "prod-eu-gruenbeck-api.azurewebsites.net",
@@ -69,62 +69,15 @@ class GruenbeckApi(object):
         }
         url = "https://prod-eu-gruenbeck-api.azurewebsites.net/api/devices/" + self.__deviceId + "/" + endpoint + "?api-version=" + self.__sdVersion
         response = requests.get(url, headers=headers)
-        responseJson = json.loads(response.text)
-        self.hasError = bool(responseJson["hasError"])
-        self.mode = int(responseJson['mode'])
-        self.nextRegeneration = responseJson['nextRegeneration']
-        self.rawWaterHardness = float(responseJson['rawWater'])
-        self.softWaterHardness = float(responseJson['softWater'])
-        print("Successfully set mg infos")
-    def init(self):
-        self.__accessToken, self.__refreshToken = self.__login()
-        if (len(self.__accessToken) > 0):
-            if self.__selectDevice():
-                self.__connectWebSocket()
-
-            """
-            input("Press Enter to exit...")
-            
-            print("leave SD")
-            self.__refreshTimer.cancel()
-            headers = {
-                "Host": "prod-eu-gruenbeck-api.azurewebsites.net",
-                "Accept": "application/json, text/plain, */*",
-                "User-Agent": "Gruenbeck/354 CFNetwork/1209 Darwin/20.2.0",
-                "Accept-Language": "de-de",
-                "Authorization": "Bearer " + self.__accessToken,
-            }
-            url = "https://prod-eu-gruenbeck-api.azurewebsites.net/api/devices/" + self.__deviceId + "/realtime/leave?api-version=" + self.__sdVersion
-            response = requests.post(url, headers=headers)
-            if(response.status_code >= 400):
-                print("error leaving SD")
-
-            
-            self.__ws.close()
-            """
-            return
-    def refreshValues(self):
-        self.__parseMgInfos()
-        self.__refreshSD()
-        return
-    def __refreshSD(self):
-        print("try refreshing...")
-        self.__socketInfoUpdated = False
-        headers = {
-            "Host": "prod-eu-gruenbeck-api.azurewebsites.net",
-            "Accept": "application/json, text/plain, */*",
-            "User-Agent": "Gruenbeck/354 CFNetwork/1209 Darwin/20.2.0",
-            "Accept-Language": "de-de",
-            "Authorization": "Bearer " + self.__accessToken,
-        }
-        
-        url = "https://prod-eu-gruenbeck-api.azurewebsites.net/api/devices/" +\
-        self.__deviceId + "/realtime/enter?api-version=" + self.__sdVersion
-        response = requests.post(url, headers=headers)
-        if(response.status_code < 400):
-            print("Successfully refreshed SD")
-            
-            print("refresh SD")
+        if response.status_code < 400:
+            responseJson = json.loads(response.text)
+            self.hasError = bool(responseJson["hasError"])
+            self.mode = int(responseJson['mode'])
+            self.nextRegeneration = responseJson['nextRegeneration']
+            self.rawWaterHardness = float(responseJson['rawWater'])
+            self.softWaterHardness = float(responseJson['softWater'])
+            print("Successfully set mg infos")
+            print("try refreshing SD...")
             headers = {
             "Host": "prod-eu-gruenbeck-api.azurewebsites.net",
             "Accept": "application/json, text/plain, */*",
@@ -138,11 +91,49 @@ class GruenbeckApi(object):
                 print("Successfully refreshed SD")
                 wait_until(lambda: self.__socketInfoUpdated == True, 5)
                 return
-
-        print("Error during refreshing")
+        
+        print("Error during updating values. Try to relogin...")
         self.__ws.close()
         self.__login()
-        self.__connectWebSocket()      
+        self.__connectWebSocket()          
+    def __leaveSD(self):
+        print("leave SD")
+        self.__refreshTimer.cancel()
+        headers = {
+            "Host": "prod-eu-gruenbeck-api.azurewebsites.net",
+            "Accept": "application/json, text/plain, */*",
+            "User-Agent": "Gruenbeck/354 CFNetwork/1209 Darwin/20.2.0",
+            "Accept-Language": "de-de",
+            "Authorization": "Bearer " + self.__accessToken,
+        }
+        url = "https://prod-eu-gruenbeck-api.azurewebsites.net/api/devices/" + self.__deviceId + "/realtime/leave?api-version=" + self.__sdVersion
+        response = requests.post(url, headers=headers)
+        if(response.status_code >= 400):
+            print("error leaving SD")
+    def init(self):
+        self.__login()
+        if (len(self.__accessToken) > 0):
+            if self.__selectDevice():
+                self.__connectWebSocket()
+
+    def __enterSD(self):
+        print("try entering SD...")
+        self.__socketInfoUpdated = False
+        headers = {
+            "Host": "prod-eu-gruenbeck-api.azurewebsites.net",
+            "Accept": "application/json, text/plain, */*",
+            "User-Agent": "Gruenbeck/354 CFNetwork/1209 Darwin/20.2.0",
+            "Accept-Language": "de-de",
+            "Authorization": "Bearer " + self.__accessToken,
+        }
+        
+        url = "https://prod-eu-gruenbeck-api.azurewebsites.net/api/devices/" +\
+        self.__deviceId + "/realtime/enter?api-version=" + self.__sdVersion
+        response = requests.post(url, headers=headers)
+        if(response.status_code < 400):
+            print("Successfully entered SD")  
+        else:
+            print("Error during entering SD")        
 
     def __on_message(self, ws, message):
         try:
@@ -185,14 +176,14 @@ class GruenbeckApi(object):
     def __on_error(ws, error):
         print(error)
 
-    @staticmethod
-    def __on_close(ws, close_status_code, close_msg):
+    def __on_close(self, ws, close_status_code, close_msg):
         print("### closed ###")
+        self.__leaveSD()
 
-    @staticmethod
-    def __on_open(ws):
+    def __on_open(self, ws):
         print("Opened connection")
         ws.send('{"protocol":"json","version":1}');
+        self.__enterSD()
     
     def __getCodeChallenge(self):
         chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -224,7 +215,6 @@ class GruenbeckApi(object):
                     "code_challenge=" +\
                     codeChallenge +\
                     "&x-client-CPU=64&client-request-id=F2929DED-2C9D-49F5-A0F4-31215427667C&redirect_uri=msal5a83cc16-ffb1-42e9-9859-9fbf07f36df8%3A%2F%2Fauth&client_id=5a83cc16-ffb1-42e9-9859-9fbf07f36df8&haschrome=1&return-client-request-id=true&x-client-DM=iPhone"
-        print(url)
         response = requests.get(url, headers=headers)
         print("Login step 1")
         start = response.text.find("csrf") + 7
@@ -243,7 +233,6 @@ class GruenbeckApi(object):
         for c in response.cookies:
             filteredCookies.append(c.name + "=" + c.value)
         cookieString = "; ".join(str(x) for x in filteredCookies)
-        print(cookieString)
         headers = {
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "X-CSRF-TOKEN": csrf,
@@ -267,7 +256,6 @@ class GruenbeckApi(object):
             filteredCookies.append(c.name + "=" + c.value)
         cookieString = "; ".join(str(x) for x in filteredCookies)
         cookieString += "; x-ms-cpim-csrf=" + csrf
-        print(cookieString)
         headers = {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Encoding": "br, gzip, deflate",
@@ -313,14 +301,12 @@ class GruenbeckApi(object):
                 "redirect_uri": "msal5a83cc16-ffb1-42e9-9859-9fbf07f36df8://auth",
                 "client_id": "5a83cc16-ffb1-42e9-9859-9fbf07f36df8",
             }
+            print("Login step 3")
             response = requests.post(url=url, headers=headers, allow_redirects=False, params=postParams)
             responseTokens = json.loads(response.text)
-            accessToken = responseTokens["access_token"]
-            refreshToken = responseTokens["refresh_token"]
+            self.__accessToken = responseTokens["access_token"]
+            self.__refreshToken = responseTokens["refresh_token"]
             print("Login successful")
-            return(accessToken, refreshToken)
-            #setInterval(() => this.startRefreshToken(), 50 * 60 * 1000); //50min
-
     def __connectWebSocket(self):
         print("connect mg web socket")
         headers = {
