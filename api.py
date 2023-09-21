@@ -32,6 +32,7 @@ class GruenbeckApi(object):
         self.saltRange = 0
         self.saltUsage = 0
         self.maintenanceLeftDays = 0
+        self.regenerationStatus = 0
     def __selectDevice(self) -> bool:
         print("Looking for devices...")
         headers = {
@@ -57,7 +58,8 @@ class GruenbeckApi(object):
             print("Using device with ID: " + devices[0]["id"] + " and name: " + devices[0]["name"])
             return True
         return False
-    def updateInfos(self):
+    def updateInfos(self):       
+        self.__socketInfoUpdated = False
         endpoint = ""; #Possible endpoints: parameters, measurements/salt, measurements/water
         headers = {
             "Host": "prod-eu-gruenbeck-api.azurewebsites.net",
@@ -118,7 +120,6 @@ class GruenbeckApi(object):
 
     def __enterSD(self):
         print("try entering SD...")
-        self.__socketInfoUpdated = False
         headers = {
             "Host": "prod-eu-gruenbeck-api.azurewebsites.net",
             "Accept": "application/json, text/plain, */*",
@@ -168,6 +169,10 @@ class GruenbeckApi(object):
                             self.remainingCapacitiesPercent[0] = messageArgs['mresidcap1']
                         if "mresidcap2" in messageArgs:
                             self.remainingCapacitiesPercent[1] = messageArgs['mresidcap2']
+                        if "mmaint" in messageArgs:
+                            self.maintenanceLeftDays = messageArgs['mmaint']
+                        if "mregstatus" in messageArgs: # mregstatus=20 seems to be running
+                            self.regenerationStatus = messageArgs['mregstatus']
         except:
             print("Websocket parse error")
         self.__socketInfoUpdated = True
